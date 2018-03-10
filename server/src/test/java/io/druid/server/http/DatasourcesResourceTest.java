@@ -21,6 +21,7 @@ package io.druid.server.http;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.Sets;
 import io.druid.client.CoordinatorServerView;
 import io.druid.client.DruidDataSource;
 import io.druid.client.DruidServer;
@@ -465,11 +466,17 @@ public class DatasourcesResourceTest
   public void testGetSegmentDataSourceSpecificInterval()
   {
     server = new DruidServer("who", "host", null, 1234, ServerType.HISTORICAL, "tier1", 0);
+    DruidServer server2 = new DruidServer("who2", "host2", null, 1234, ServerType.HISTORICAL, "tier1", 0);
+    DruidServer server3 = new DruidServer("who3", "host3", null, 1234, ServerType.HISTORICAL, "tier1", 0);
+    DataSegment dataSegment3 = new DataSegment("datasource1", Intervals.of("2010-09-04/P1D"), null, null, null, null, null, 0x9, 20);
+
     server.addDataSegment(dataSegmentList.get(0));
     server.addDataSegment(dataSegmentList.get(1));
     server.addDataSegment(dataSegmentList.get(2));
+    server2.addDataSegment(dataSegmentList.get(0));
+    server3.addDataSegment(dataSegment3);
     EasyMock.expect(inventoryView.getInventory()).andReturn(
-        ImmutableList.of(server)
+        ImmutableList.of(server,server2,server3)
     ).atLeastOnce();
     EasyMock.replay(inventoryView);
 
@@ -502,8 +509,8 @@ public class DatasourcesResourceTest
     response = datasourcesResource.getSegmentDataSourceSpecificInterval(
         "datasource1",
         "2010-01-01/P1M",
-        "simple",
-        null
+        null,
+        "full"
     );
     HashMap<Interval, Map<String, Object>> results = ((HashMap<Interval, Map<String, Object>>) response.getEntity());
     Assert.assertEquals(2, results.size());
@@ -516,7 +523,12 @@ public class DatasourcesResourceTest
     response = datasourcesResource.getSegmentDataSourceSpecificInterval("datasource1", "2010-01-01/P1M", null, "full");
     TreeMap<Interval, Map<String, Object>> results1 = ((TreeMap<Interval, Map<String, Object>>) response.getEntity());
     i = 1;
+    Set<String> servers = Sets.newHashSet();
     for (Map.Entry<Interval, Map<String, Object>> entry : results1.entrySet()) {
+      entry.getValue().values().forEach(val -> {
+        Set<String> serverList = (Set<String>) ((Map<String, Object>) val).get("servers");
+        servers.addAll(serverList);
+      });
       Assert.assertEquals(dataSegmentList.get(i).getInterval(), entry.getKey());
       Assert.assertEquals(
           dataSegmentList.get(i),
@@ -526,6 +538,7 @@ public class DatasourcesResourceTest
       );
       i--;
     }
+    Assert.assertFalse(servers.contains("host3"));
     EasyMock.verify(inventoryView);
   }
 
